@@ -6,64 +6,75 @@
     <title>Johan's Quest: Pixel Realm</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background-color: #121212;
-            color: #ffffff;
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
             font-family: 'Courier New', Courier, monospace;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
         }
-        h1 { margin-bottom: 10px; font-size: 24px; text-shadow: 2px 2px #000; }
         #gameCanvas {
-            border: 4px solid #ffffff;
-            background-color: #5c94fc;
+            display: block;
+            width: 100vw;
+            height: 100vh;
             image-rendering: pixelated;
             image-rendering: crisp-edges;
-            box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.5);
         }
-        .controls-info { margin-top: 15px; font-size: 14px; color: #aaa; }
+        .ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 18px;
+            text-shadow: 2px 2px 0px #000;
+            pointer-events: none;
+            z-index: 10;
+        }
     </style>
 </head>
 <body>
 
-    <h1>🎮 Johan's Quest: Pixel Realm</h1>
-    <canvas id="gameCanvas" width="800" height="450"></canvas>
-    <div class="controls-info">Usa A / D para moverte, Shift para correr, Espacio para Saltar</div>
+    <div class="ui-layer">
+        <div id="levelDisplay">Nivel: 1</div>
+        <div id="healthDisplay">Vida: ❤️❤️❤️</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Función para cargar imagen y remover fondo blanco automáticamente
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
         function loadSprite(src) {
             const img = new Image();
             img.src = src;
             img.onload = () => {
-                const offscreenCanvas = document.createElement('canvas');
-                offscreenCanvas.width = img.width;
-                offscreenCanvas.height = img.height;
-                const offCtx = offscreenCanvas.getContext('2d');
+                const offCanvas = document.createElement('canvas');
+                offCanvas.width = img.width;
+                offCanvas.height = img.height;
+                const offCtx = offCanvas.getContext('2d');
                 offCtx.drawImage(img, 0, 0);
-
                 const imgData = offCtx.getImageData(0, 0, img.width, img.height);
                 const data = imgData.data;
 
-                // Eliminar color blanco (R: 250+, G: 250+, B: 250+)
                 for (let i = 0; i < data.length; i += 4) {
                     if (data[i] > 240 && data[i+1] > 240 && data[i+2] > 240) {
-                        data[i+3] = 0; // Transparencia total
+                        data[i+3] = 0;
                     }
                 }
                 offCtx.putImageData(imgData, 0, 0);
-                img.cleanCanvas = offscreenCanvas;
+                img.cleanCanvas = offCanvas;
             };
             return img;
         }
 
-        // Cargar assets
         const sprites = {
             idle: loadSprite('johancito idle.gif'),
             walkRight: loadSprite('Johancito-walking.gif'),
@@ -72,36 +83,75 @@
             runLeft: loadSprite('johancito-running-left.gif'),
             grass: loadSprite('grass.png'),
             soil: loadSprite('soil.png'),
+            rock: loadSprite('rock.png'),
             slime: loadSprite('slime.gif')
         };
 
-        const tileSize = 32;
-        const groundY = canvas.height - (tileSize * 2);
+        const tileSize = 48;
+        let currentLevel = 1;
 
-        // Estado del jugador con físicas de salto
+        // Definición de Niveles
+        const levels = {
+            1: {
+                platforms: [
+                    { x: 300, y: canvas.height - tileSize * 4, w: 3, h: 1 },
+                    { x: 550, y: canvas.height - tileSize * 6, w: 4, h: 1 }
+                ],
+                slimes: [
+                    { x: 500, y: canvas.height - tileSize * 2 - 40, width: 40, height: 40, vx: 2, minX: 350, maxX: 700 }
+                ]
+            },
+            2: {
+                platforms: [
+                    { x: 200, y: canvas.height - tileSize * 4, w: 2, h: 1 },
+                    { x: 450, y: canvas.height - tileSize * 6, w: 2, h: 1 },
+                    { x: 700, y: canvas.height - tileSize * 8, w: 3, h: 1 }
+                ],
+                slimes: [
+                    { x: 250, y: canvas.height - tileSize * 4 - 40, width: 40, height: 40, vx: 3, minX: 200, maxX: 300 },
+                    { x: 600, y: canvas.height - tileSize * 2 - 40, width: 40, height: 40, vx: 4, minX: 450, maxX: 850 }
+                ]
+            }
+        };
+
         const player = {
-            x: 100,
-            y: groundY - 48,
+            x: 50,
+            y: 100,
             width: 48,
             height: 48,
-            speed: 3,
+            speed: 4,
             vx: 0,
             vy: 0,
-            gravity: 0.5,
-            jumpPower: -10,
+            gravity: 0.6,
+            jumpPower: -12,
             isGrounded: false,
-            direction: 'idle'
+            direction: 'idle',
+            hp: 3,
+            invulnerable: 0
         };
 
         const keys = {};
         window.addEventListener('keydown', e => keys[e.key] = true);
         window.addEventListener('keyup', e => keys[e.key] = false);
 
+        function resetPlayer() {
+            player.x = 50;
+            player.y = canvas.height - tileSize * 3;
+            player.vx = 0;
+            player.vy = 0;
+        }
+
+        function checkAABB(a, b) {
+            return a.x < b.x + b.width &&
+                   a.x + a.width > b.x &&
+                   a.y < b.y + b.height &&
+                   a.y + a.height > b.y;
+        }
+
         function update() {
             let isRunning = keys['Shift'];
-            let currentSpeed = isRunning ? player.speed * 1.8 : player.speed;
+            let currentSpeed = isRunning ? player.speed * 1.7 : player.speed;
 
-            // Movimiento Horizontal
             if (keys['a'] || keys['A'] || keys['ArrowLeft']) {
                 player.vx = -currentSpeed;
                 player.direction = isRunning ? 'runLeft' : 'walkLeft';
@@ -113,27 +163,76 @@
                 player.direction = 'idle';
             }
 
-            // Salto
             if ((keys[' '] || keys['w'] || keys['W'] || keys['ArrowUp']) && player.isGrounded) {
                 player.vy = player.jumpPower;
                 player.isGrounded = false;
             }
 
-            // Aplicar gravedad
             player.vy += player.gravity;
             player.x += player.vx;
             player.y += player.vy;
 
-            // Colisión con el suelo real
+            // Colisión Suelo Base
+            const groundY = canvas.height - tileSize * 2;
             if (player.y + player.height >= groundY) {
                 player.y = groundY - player.height;
                 player.vy = 0;
                 player.isGrounded = true;
             }
 
-            // Limites del Canvas
+            // Colisión con Plataformas de Roca
+            const level = levels[currentLevel];
+            level.platforms.forEach(plat => {
+                const px = plat.x;
+                const py = plat.y;
+                const pw = plat.w * tileSize;
+                const ph = plat.h * tileSize;
+
+                if (player.x + player.width > px && player.x < px + pw) {
+                    if (player.y + player.height >= py && player.y + player.height <= py + 15 && player.vy >= 0) {
+                        player.y = py - player.height;
+                        player.vy = 0;
+                        player.isGrounded = true;
+                    }
+                }
+            });
+
+            // Cambiar de Nivel al llegar al borde derecho
+            if (player.x + player.width >= canvas.width) {
+                if (levels[currentLevel + 1]) {
+                    currentLevel++;
+                    document.getElementById('levelDisplay').innerText = `Nivel: ${currentLevel}`;
+                    resetPlayer();
+                } else {
+                    player.x = canvas.width - player.width;
+                }
+            }
             if (player.x < 0) player.x = 0;
-            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+            // IA de Slimes & Colisiones
+            if (player.invulnerable > 0) player.invulnerable--;
+
+            level.slimes.forEach(slime => {
+                slime.x += slime.vx;
+                if (slime.x <= slime.minX || slime.x + slime.width >= slime.maxX) {
+                    slime.vx *= -1;
+                }
+
+                // Daño al Jugador
+                if (checkAABB(player, slime) && player.invulnerable === 0) {
+                    player.hp--;
+                    player.invulnerable = 60; // 1 segundo invulnerable
+                    document.getElementById('healthDisplay').innerText = `Vida: ${'❤️'.repeat(Math.max(0, player.hp))}`;
+                    if (player.hp <= 0) {
+                        alert('¡Game Over! Reintentando...');
+                        player.hp = 3;
+                        currentLevel = 1;
+                        document.getElementById('levelDisplay').innerText = `Nivel: 1`;
+                        document.getElementById('healthDisplay').innerText = `Vida: ❤️❤️❤️`;
+                        resetPlayer();
+                    }
+                }
+            });
         }
 
         function drawCleanImage(imgObj, x, y, w, h) {
@@ -147,18 +246,35 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Dibujar Mapa
+            // Fondo de cielo
+            ctx.fillStyle = '#5c94fc';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Suelo
             for (let x = 0; x < canvas.width; x += tileSize) {
                 drawCleanImage(sprites.grass, x, canvas.height - tileSize * 2, tileSize, tileSize);
                 drawCleanImage(sprites.soil, x, canvas.height - tileSize, tileSize, tileSize);
             }
 
-            // Dibujar Slime
-            drawCleanImage(sprites.slime, 500, groundY - 32, 32, 32);
+            const level = levels[currentLevel];
 
-            // Dibujar Jugador según estado
-            let currentSprite = sprites[player.direction] || sprites.idle;
-            drawCleanImage(currentSprite, player.x, player.y, player.width, player.height);
+            // Dibujar Plataformas
+            level.platforms.forEach(plat => {
+                for (let i = 0; i < plat.w; i++) {
+                    drawCleanImage(sprites.rock, plat.x + i * tileSize, plat.y, tileSize, tileSize);
+                }
+            });
+
+            // Dibujar Enemigos Slime
+            level.slimes.forEach(slime => {
+                drawCleanImage(sprites.slime, slime.x, slime.y, slime.width, slime.height);
+            });
+
+            // Dibujar Jugador (Parpadea si fue dañado)
+            if (player.invulnerable % 10 < 5) {
+                let currentSprite = sprites[player.direction] || sprites.idle;
+                drawCleanImage(currentSprite, player.x, player.y, player.width, player.height);
+            }
         }
 
         function gameLoop() {
@@ -167,7 +283,10 @@
             requestAnimationFrame(gameLoop);
         }
 
-        window.onload = () => gameLoop();
+        window.onload = () => {
+            resetPlayer();
+            gameLoop();
+        };
     </script>
 </body>
 </html>
