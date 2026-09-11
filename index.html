@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Johan's Quest: Pixel Realm</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            font-size: 24px;
+            text-shadow: 2px 2px #000;
+        }
+
+        #gameCanvas {
+            border: 4px solid #ffffff;
+            background-color: #5c94fc; /* Color de cielo retro */
+            /* Clave para que los sprites mantengan el pixel art nítido */
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .controls-info {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🎮 Johan's Quest: Pixel Realm</h1>
+    <canvas id="gameCanvas" width="800" height="450"></canvas>
+    <div class="controls-info">Usa A / D para moverte, Shift para correr</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Cargar Sprites desde el repo
+        const playerImg = new Image();
+        playerImg.src = 'johancito idle.gif';
+
+        const playerWalkRight = new Image();
+        playerWalkRight.src = 'Johancito-walking.gif';
+
+        const playerWalkLeft = new Image();
+        playerWalkLeft.src = 'johancito-walking-left.gif';
+
+        const grassImg = new Image();
+        grassImg.src = 'grass.png';
+
+        const soilImg = new Image();
+        soilImg.src = 'soil.png';
+
+        const slimeImg = new Image();
+        slimeImg.src = 'slime.gif';
+
+        // Estado del Jugador
+        const player = {
+            x: 100,
+            y: 300,
+            width: 48,
+            height: 48,
+            speed: 3,
+            vx: 0,
+            direction: 'idle'
+        };
+
+        // Teclas
+        const keys = {};
+
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        function update() {
+            let isRunning = keys['Shift'];
+            let currentSpeed = isRunning ? player.speed * 1.8 : player.speed;
+
+            if (keys['a'] || keys['A'] || keys['ArrowLeft']) {
+                player.vx = -currentSpeed;
+                player.direction = 'left';
+            } else if (keys['d'] || keys['D'] || keys['ArrowRight']) {
+                player.vx = currentSpeed;
+                player.direction = 'right';
+            } else {
+                player.vx = 0;
+                player.direction = 'idle';
+            }
+
+            player.x += player.vx;
+
+            // Limites del canvas
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+        }
+
+        function draw() {
+            // Limpiar pantalla
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dibujar Suelo (Bloques de pasto y tierra)
+            const tileSize = 32;
+            for (let x = 0; x < canvas.width; x += tileSize) {
+                // Capa de pasto
+                ctx.drawImage(grassImg, x, canvas.height - tileSize * 2, tileSize, tileSize);
+                // Capa de tierra
+                ctx.drawImage(soilImg, x, canvas.height - tileSize, tileSize, tileSize);
+            }
+
+            // Dibujar Slime
+            ctx.drawImage(slimeImg, 500, canvas.height - tileSize * 2 - 32, 32, 32);
+
+            // Seleccionar sprite del jugador según dirección
+            let currentSprite = playerImg;
+            if (player.direction === 'right') currentSprite = playerWalkRight;
+            if (player.direction === 'left') currentSprite = playerWalkLeft;
+
+            // Dibujar Jugador
+            ctx.drawImage(currentSprite, player.x, player.y, player.width, player.height);
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Arrancar el juego cuando cargue la página
+        window.onload = () => {
+            gameLoop();
+        };
+    </script>
+</body>
+</html>
