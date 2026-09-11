@@ -52,6 +52,60 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
+        // --- SISTEMA DE AUDIO RETRO EN TIEMPO REAL (Web Audio API) ---
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                startRetroMusic();
+            }
+        }
+
+        // Efecto de Sonido de Salto
+        function playJumpSound() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.15);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.15);
+        }
+
+        // Música de Fondo Estilo Chiptune 8-Bit
+        function startRetroMusic() {
+            const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25]; // Do Re Mi Fa Sol La Si Do
+            let step = 0;
+
+            setInterval(() => {
+                if (!audioCtx) return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                // Melodía simple
+                const note = notes[step % notes.length];
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(note, audioCtx.currentTime);
+                
+                gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.2);
+                step++;
+            }, 250);
+        }
+
+        // Carga de Sprites con fondo transparente
         function loadSprite(src) {
             const img = new Image();
             img.src = src;
@@ -90,7 +144,6 @@
         const tileSize = 48;
         let currentLevel = 1;
 
-        // Definición de Niveles
         const levels = {
             1: {
                 platforms: [
@@ -131,7 +184,10 @@
         };
 
         const keys = {};
-        window.addEventListener('keydown', e => keys[e.key] = true);
+        window.addEventListener('keydown', e => {
+            initAudio(); // Inicia el audio al presionar cualquier tecla
+            keys[e.key] = true;
+        });
         window.addEventListener('keyup', e => keys[e.key] = false);
 
         function resetPlayer() {
@@ -166,13 +222,14 @@
             if ((keys[' '] || keys['w'] || keys['W'] || keys['ArrowUp']) && player.isGrounded) {
                 player.vy = player.jumpPower;
                 player.isGrounded = false;
+                playJumpSound();
             }
 
             player.vy += player.gravity;
             player.x += player.vx;
             player.y += player.vy;
 
-            // Colisión Suelo Base
+            // Colisión Suelo
             const groundY = canvas.height - tileSize * 2;
             if (player.y + player.height >= groundY) {
                 player.y = groundY - player.height;
@@ -180,13 +237,12 @@
                 player.isGrounded = true;
             }
 
-            // Colisión con Plataformas de Roca
+            // Colisión Plataformas
             const level = levels[currentLevel];
             level.platforms.forEach(plat => {
                 const px = plat.x;
                 const py = plat.y;
                 const pw = plat.w * tileSize;
-                const ph = plat.h * tileSize;
 
                 if (player.x + player.width > px && player.x < px + pw) {
                     if (player.y + player.height >= py && player.y + player.height <= py + 15 && player.vy >= 0) {
@@ -197,7 +253,7 @@
                 }
             });
 
-            // Cambiar de Nivel al llegar al borde derecho
+            // Transición de Nivel
             if (player.x + player.width >= canvas.width) {
                 if (levels[currentLevel + 1]) {
                     currentLevel++;
@@ -209,7 +265,7 @@
             }
             if (player.x < 0) player.x = 0;
 
-            // IA de Slimes & Colisiones
+            // Enemigos
             if (player.invulnerable > 0) player.invulnerable--;
 
             level.slimes.forEach(slime => {
@@ -218,10 +274,9 @@
                     slime.vx *= -1;
                 }
 
-                // Daño al Jugador
                 if (checkAABB(player, slime) && player.invulnerable === 0) {
                     player.hp--;
-                    player.invulnerable = 60; // 1 segundo invulnerable
+                    player.invulnerable = 60;
                     document.getElementById('healthDisplay').innerText = `Vida: ${'❤️'.repeat(Math.max(0, player.hp))}`;
                     if (player.hp <= 0) {
                         alert('¡Game Over! Reintentando...');
@@ -246,7 +301,7 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Fondo de cielo
+            // Fondo
             ctx.fillStyle = '#5c94fc';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -258,19 +313,19 @@
 
             const level = levels[currentLevel];
 
-            // Dibujar Plataformas
+            // Plataformas
             level.platforms.forEach(plat => {
                 for (let i = 0; i < plat.w; i++) {
                     drawCleanImage(sprites.rock, plat.x + i * tileSize, plat.y, tileSize, tileSize);
                 }
             });
 
-            // Dibujar Enemigos Slime
+            // Slimes
             level.slimes.forEach(slime => {
                 drawCleanImage(sprites.slime, slime.x, slime.y, slime.width, slime.height);
             });
 
-            // Dibujar Jugador (Parpadea si fue dañado)
+            // Jugador
             if (player.invulnerable % 10 < 5) {
                 let currentSprite = sprites[player.direction] || sprites.idle;
                 drawCleanImage(currentSprite, player.x, player.y, player.width, player.height);
